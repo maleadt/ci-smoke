@@ -2,4 +2,4 @@
 
 Minimal repository for Buildkite scheduler smoke tests.
 
-Smoke trigger 3.
+Smoke trigger 4.

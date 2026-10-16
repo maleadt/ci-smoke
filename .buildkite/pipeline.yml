@@ -1,0 +1,41 @@
+# Dress rehearsal of the riscv64 nightly build (JuliaCI/julia-buildkite branch
+# tb/riscv64-nightly, `build_linux.riscv64.yml` with the row of
+# `build_linux.riscv64.arches`), on an agent that registers qemu-riscv64 with
+# binfmt_misc. Differences from the real step: Julia and julia-buildkite are
+# checked out here (this pipeline's repository is ci-smoke), the image comes
+# from this repository's `riscv-rehearsal` release, and the final S3 staging
+# fails (its OIDC role only exists for the julia pipelines).
+steps:
+  - label: ":linux: build riscv64-linux-gnu (rehearsal)"
+    key: "build_riscv64-linux-gnu"
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          version: '1.10'
+      - JuliaCI/sandbox#v2:
+          rootfs_url: https://github.com/maleadt/ci-smoke/releases/download/riscv-rehearsal/package_linux_riscv64.x86_64.tar.gz
+          rootfs_treehash: "3ff0af0d282754a12649ee79a65464e85a97c8c8"
+          uid: 1000
+          gid: 1000
+          workspaces:
+            - "/cache/repos:/cache/repos"
+    timeout_in_minutes: 240
+    commands: |
+      git clone --filter=blob:none --branch master https://github.com/JuliaLang/julia julia
+      git clone --depth=1 --branch tb/riscv64-nightly https://github.com/JuliaCI/julia-buildkite julia/.buildkite
+      cd julia
+      git log -1 --format='julia %H %s'
+      git -C .buildkite log -1 --format='julia-buildkite %H %s'
+      bash .buildkite/utilities/build_julia.sh
+    agents:
+      queue: "default"
+      sandbox_capable: "true"
+      os: "linux"
+      arch: "x86_64"
+      binfmt_riscv64: "true"
+    env:
+      JULIA_SHELL: "/bin/bash"
+      TRIPLET: "riscv64-linux-gnu"
+      MAKE_FLAGS: "OS=Linux,XC_HOST=riscv64-linux-gnu,MARCH=rv64gc,JL_CFLAGS=-Werror,JL_CXXFLAGS=-Werror"
+      ROOTFS_IMAGE_NAME: "package_linux_riscv64"
+      BUILDKITE_CANCEL_SIGNAL: "SIGQUIT"

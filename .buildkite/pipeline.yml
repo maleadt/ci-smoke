@@ -36,6 +36,6 @@ steps:
     env:
       JULIA_SHELL: "/bin/bash"
       TRIPLET: "riscv64-linux-gnu"
-      MAKE_FLAGS: "OS=Linux,XC_HOST=riscv64-linux-gnu,MARCH=rv64gc,JL_CFLAGS=-Werror,JL_CXXFLAGS=-Werror"
+      MAKE_FLAGS: "OS=Linux,XC_HOST=riscv64-linux-gnu,MARCH=rv64gc,JL_CFLAGS=-Werror"
       ROOTFS_IMAGE_NAME: "package_linux_riscv64"
       BUILDKITE_CANCEL_SIGNAL: "SIGQUIT"

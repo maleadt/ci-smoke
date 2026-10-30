@@ -1,8 +1,9 @@
 # Job size tags (sandboxed-buildkite-agent tb/resource-scheduler, PLAN.resources.md 3d).
-# Run against a scheduler with total_cpus=16 and a group default of 4/4/8.
-# Expected: "wide" (12) and "untagged" (4) start first; "small" waits behind
-# "wide" (head of line) until CPUs free; "oom" is OOM-killed by memory.max;
-# "stop" is stopped by a scheduler stop request and retried by Buildkite.
+# Run against a scheduler with total_cpus=16 whose group requires the tags.
+# Expected: "wide" (12) and "medium" (4) start first; "small" waits behind
+# "wide" (head of line) until CPUs free; "untagged" is failed by the scheduler
+# with a message; "oom" is OOM-killed by memory.max; "stop" is stopped by a
+# scheduler stop request and retried by Buildkite.
 env:
   PROBE: >-
     echo "agent=$$BUILDKITE_AGENT_NAME";
@@ -12,20 +13,24 @@ env:
 steps:
   - label: "wide"
     command: "eval \"$$PROBE\"; sleep 45"
-    agents: {queue: "default", sched_cpus: "12", sched_mem_gib: "8"}
-  - label: "untagged"
+    agents: {queue: "default", sched_cpus: "12", sched_threads: "12", sched_mem_gib: "8"}
+  - label: "medium"
     command: "eval \"$$PROBE\"; sleep 20"
-    agents: {queue: "default"}
+    agents: {queue: "default", sched_cpus: "4", sched_threads: "4", sched_mem_gib: "8"}
+  - label: "untagged"
+    command: "echo should not run; exit 1"
+    agents: {queue: "default", sched_cpus: "4"}
+    soft_fail: true
   - label: "small"
     command: "eval \"$$PROBE\"; sleep 5"
     agents: {queue: "default", sched_cpus: "1", sched_threads: "2", sched_mem_gib: "2"}
   - label: "oom"
     command: "eval \"$$PROBE\"; x=$$(head -c 3G /dev/zero | tr '\\0' a); echo survived $${#x}"
-    agents: {queue: "default", sched_cpus: "1", sched_mem_gib: "1"}
+    agents: {queue: "default", sched_cpus: "1", sched_threads: "1", sched_mem_gib: "1"}
     soft_fail: true
   - label: "stop"
     command: "eval \"$$PROBE\"; if [ \"$$BUILDKITE_RETRY_COUNT\" = 0 ]; then sleep 900; fi"
-    agents: {queue: "default", sched_cpus: "2"}
+    agents: {queue: "default", sched_cpus: "2", sched_threads: "2", sched_mem_gib: "4"}
     retry:
       automatic:
         - exit_status: -1

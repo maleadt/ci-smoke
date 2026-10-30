@@ -1,38 +1,34 @@
-# Job size tags (sandboxed-buildkite-agent tb/resource-scheduler, PLAN.resources.md 3d).
-# Run against a scheduler with total_cpus=16 whose group requires the tags.
-# Expected: "wide" (12) and "medium" (4) start first; "small" waits behind
-# "wide" (head of line) until CPUs free; "untagged" is failed by the scheduler
-# with a message; "oom" is OOM-killed by memory.max; "stop" is stopped by a
-# scheduler stop request and retried by Buildkite.
+# Fast scheduler stop and automatic retry (sandboxed-buildkite-agent tb/fast-stop,
+# julia-buildkite tb/retry-agent-lost). Run against a scheduler whose group advertises
+# pool=fast-stop. Expected:
+# - "stop" and "stop-slow-cancel" are stopped by a scheduler stop request within seconds
+#   (the latter ignores its cancel signal for 10 minutes, like Julia's test runner dumping
+#   cores), finish with signal_reason agent_stop, and pass on their retry;
+# - "lost" has its agent SIGKILLed by hand, is marked lost by Buildkite (exit -1, no signal
+#   reason) and passes on its retry.
 env:
   PROBE: >-
-    echo "agent=$$BUILDKITE_AGENT_NAME";
-    echo "JULIA_CPU_THREADS=$$JULIA_CPU_THREADS OMP_THREAD_LIMIT=$${OMP_THREAD_LIMIT:-unset} nproc=$$(nproc)";
-    echo "agent tags: $$BUILDKITE_AGENT_META_DATA_SCHED_CPUS/$$BUILDKITE_AGENT_META_DATA_SCHED_THREADS/$$BUILDKITE_AGENT_META_DATA_SCHED_MEM_GIB queue=$$BUILDKITE_AGENT_META_DATA_QUEUE";
-    echo "retry=$$BUILDKITE_RETRY_COUNT"
+    echo "agent=$$BUILDKITE_AGENT_NAME retry=$$BUILDKITE_RETRY_COUNT";
+    date -u +%FT%TZ
 steps:
-  - label: "wide"
-    command: "eval \"$$PROBE\"; sleep 45"
-    agents: {queue: "default", pool: "sized", sched_cpus: "12", sched_threads: "12", sched_mem_gib: "8"}
-  - label: "medium"
-    command: "eval \"$$PROBE\"; sleep 20"
-    agents: {queue: "default", pool: "sized", sched_cpus: "4", sched_threads: "4", sched_mem_gib: "8"}
-  - label: "untagged"
-    command: "echo should not run; exit 1"
-    agents: {queue: "default", pool: "sized", sched_cpus: "4"}
-    soft_fail: true
-  - label: "small"
-    command: "eval \"$$PROBE\"; sleep 5"
-    agents: {queue: "default", pool: "sized", sched_cpus: "1", sched_threads: "2", sched_mem_gib: "2"}
-  - label: "oom"
-    command: "eval \"$$PROBE\"; x=$$(head -c 3G /dev/zero | tr '\\0' a); echo survived $${#x}"
-    agents: {queue: "default", pool: "sized", sched_cpus: "1", sched_threads: "1", sched_mem_gib: "1"}
-    soft_fail: true
   - label: "stop"
     command: "eval \"$$PROBE\"; if [ \"$$BUILDKITE_RETRY_COUNT\" = 0 ]; then sleep 900; fi"
-    agents: {queue: "default", pool: "sized", sched_cpus: "2", sched_threads: "2", sched_mem_gib: "4"}
-    retry:
+    agents: {queue: "default", pool: "fast-stop", sched_cpus: "2", sched_threads: "2", sched_mem_gib: "2"}
+    retry: &retry_rules
       automatic:
         - exit_status: -1
+          signal_reason: [none, agent_stop]
+          limit: 1
+        - exit_status: "*"
           signal_reason: agent_stop
           limit: 1
+  - label: "stop-slow-cancel"
+    command: "eval \"$$PROBE\"; trap 'echo got SIGQUIT, dumping cores for 10 minutes; sleep 600' QUIT; if [ \"$$BUILDKITE_RETRY_COUNT\" = 0 ]; then sleep 900 & wait; sleep 900; fi"
+    env:
+      BUILDKITE_CANCEL_SIGNAL: "SIGQUIT"
+    agents: {queue: "default", pool: "fast-stop", sched_cpus: "2", sched_threads: "2", sched_mem_gib: "2"}
+    retry: *retry_rules
+  - label: "lost"
+    command: "eval \"$$PROBE\"; if [ \"$$BUILDKITE_RETRY_COUNT\" = 0 ]; then sleep 1800; fi"
+    agents: {queue: "default", pool: "fast-stop", sched_cpus: "2", sched_threads: "2", sched_mem_gib: "2"}
+    retry: *retry_rules

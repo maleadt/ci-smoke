@@ -1,0 +1,30 @@
+# Queued while "blocker" holds the only slot, in an order that differs from
+# both FIFO and job priority. Runner group "first" (group priority 1) serves
+# lane=first and untagged jobs, "second" (group priority 2) lane=second and
+# untagged jobs. Expected order: blocker, first-p3, any-p1, any-p0, second-p5,
+# second-m1.
+steps:
+  - label: "blocker"
+    priority: 10
+    command: "echo agent=$$BUILDKITE_AGENT_NAME; sleep 40"
+    agents: {queue: "default"}
+  - label: "second-m1"
+    priority: -1
+    command: "echo agent=$$BUILDKITE_AGENT_NAME; sleep 3"
+    agents: {queue: "default", lane: "second"}
+  - label: "any-p0"
+    priority: 0
+    command: "echo agent=$$BUILDKITE_AGENT_NAME; sleep 3"
+    agents: {queue: "default"}
+  - label: "second-p5"
+    priority: 5
+    command: "echo agent=$$BUILDKITE_AGENT_NAME; sleep 3"
+    agents: {queue: "default", lane: "second"}
+  - label: "first-p3"
+    priority: 3
+    command: "echo agent=$$BUILDKITE_AGENT_NAME; sleep 3"
+    agents: {queue: "default", lane: "first"}
+  - label: "any-p1"
+    priority: 1
+    command: "echo agent=$$BUILDKITE_AGENT_NAME; sleep 3"
+    agents: {queue: "default"}

@@ -1,0 +1,27 @@
+# Nested sandbox through the sandbox plugin, as julia-buildkite runs it, to
+# check SANDBOX_PERSISTENCE_DIR=/persist (sandboxed-buildkite-agent 23562de).
+steps:
+  - label: "nested sandbox {{matrix}}"
+    matrix: ["1", "2"]
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          version: '1.10'
+      - JuliaCI/sandbox#v2:
+          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v8.12/julia_publish.x86_64.tar.gz
+          rootfs_treehash: "14bd23d733e8c474a078d55ab313420fd6deee02"
+          uid: 1000
+          gid: 1000
+    command: |
+      set -eux
+      echo "agent=$$BUILDKITE_AGENT_NAME"
+      id; uname -a; cat /etc/os-release | head -2
+      ls -la /etc/marker 2>/dev/null || echo "no marker from an earlier job"
+      echo "written by $$BUILDKITE_JOB_ID" > "$$HOME/marker" || true
+      aws --version
+      dd if=/dev/zero of=/tmp/blob bs=1M count=64 status=none && rm /tmp/blob
+    agents:
+      queue: "default"
+      sandbox_capable: "true"
+      os: "linux"
+      arch: "x86_64"

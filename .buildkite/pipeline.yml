@@ -1,0 +1,6 @@
+steps:
+  - label: "objcache {{matrix}}"
+    command: "bash .buildkite/objcache.sh"
+    agents:
+      queue: "default"
+    matrix: ["1", "2", "3"]

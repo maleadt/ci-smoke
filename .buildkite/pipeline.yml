@@ -1,0 +1,33 @@
+# Job size tags (sandboxed-buildkite-agent tb/resource-scheduler, PLAN.resources.md 3d).
+# Run against a scheduler with total_cpus=16 and a group default of 4/4/8.
+# Expected: "wide" (12) and "untagged" (4) start first; "small" waits behind
+# "wide" (head of line) until CPUs free; "oom" is OOM-killed by memory.max;
+# "stop" is stopped by a scheduler stop request and retried by Buildkite.
+env:
+  PROBE: >-
+    echo "agent=$$BUILDKITE_AGENT_NAME";
+    echo "JULIA_CPU_THREADS=$$JULIA_CPU_THREADS OMP_THREAD_LIMIT=$${OMP_THREAD_LIMIT:-unset} nproc=$$(nproc)";
+    echo "agent tags: $$BUILDKITE_AGENT_META_DATA_SCHED_CPUS/$$BUILDKITE_AGENT_META_DATA_SCHED_THREADS/$$BUILDKITE_AGENT_META_DATA_SCHED_MEM_GIB queue=$$BUILDKITE_AGENT_META_DATA_QUEUE";
+    echo "retry=$$BUILDKITE_RETRY_COUNT"
+steps:
+  - label: "wide"
+    command: "eval \"$$PROBE\"; sleep 45"
+    agents: {queue: "default", sched_cpus: "12", sched_mem_gib: "8"}
+  - label: "untagged"
+    command: "eval \"$$PROBE\"; sleep 20"
+    agents: {queue: "default"}
+  - label: "small"
+    command: "eval \"$$PROBE\"; sleep 5"
+    agents: {queue: "default", sched_cpus: "1", sched_threads: "2", sched_mem_gib: "2"}
+  - label: "oom"
+    command: "eval \"$$PROBE\"; x=$$(head -c 3G /dev/zero | tr '\\0' a); echo survived $${#x}"
+    agents: {queue: "default", sched_cpus: "1", sched_mem_gib: "1"}
+    soft_fail: true
+  - label: "stop"
+    command: "eval \"$$PROBE\"; if [ \"$$BUILDKITE_RETRY_COUNT\" = 0 ]; then sleep 900; fi"
+    agents: {queue: "default", sched_cpus: "2"}
+    retry:
+      automatic:
+        - exit_status: -1
+          signal_reason: agent_stop
+          limit: 1

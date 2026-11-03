@@ -1,5 +1,5 @@
-# CPU affinity for jobs that require cpuset_limited (sandboxed-buildkite-agent 7dc4abf).
-# pegasus default: 4 cpus / 6 threads. Expect "limited" to see 6 CPUs, "unpinned" all.
+# CPU affinity for every Linux job (sandboxed-buildkite-agent f841da8).
+# pegasus default: 4 cpus / 6 threads. Expect both steps to see 6 CPUs, disjoint.
 env:
   PROBE: >-
     echo "agent=$$BUILDKITE_AGENT_NAME";

@@ -1,36 +1,36 @@
-# Job size tags (sandboxed-buildkite-agent tb/resource-scheduler, PLAN.resources.md 3d).
-# Run against a scheduler with total_cpus=16 whose group requires the tags.
-# Expected: "wide" (12) and "medium" (4) start first; "small" waits behind
-# "wide" (head of line) until CPUs free; "untagged" is failed by the scheduler
-# with a message; "oom" is OOM-killed by memory.max; "stop" is stopped by a
-# scheduler stop request and retried by Buildkite.
+# Per-queue defaults for untagged jobs (sandboxed-buildkite-agent#181 at 921b6f0).
+# Linux (pegasus, pool=sized): [linux.default.default] = 4 cpus / 6 threads / 4 GiB,
+# total_cpus = 16.
+# Expected:
+#   untagged    -> JULIA_CPU_THREADS = OMP_THREAD_LIMIT = nproc = 6, memory.max 4 GiB
+#   untagged-oom-> OOM-killed under the default's 4 GiB (soft fail)
+#   partial     -> failed by the scheduler with a message, never falls back (soft fail)
+#   tagged      -> 8 / 8 / 2: tags override the default
+#   stop        -> untagged; stopped by `bk stop`, retried by Buildkite, passes
 env:
   PROBE: >-
     echo "agent=$$BUILDKITE_AGENT_NAME";
     echo "JULIA_CPU_THREADS=$$JULIA_CPU_THREADS OMP_THREAD_LIMIT=$${OMP_THREAD_LIMIT:-unset} nproc=$$(nproc)";
-    echo "agent tags: $$BUILDKITE_AGENT_META_DATA_SCHED_CPUS/$$BUILDKITE_AGENT_META_DATA_SCHED_THREADS/$$BUILDKITE_AGENT_META_DATA_SCHED_MEM_GIB queue=$$BUILDKITE_AGENT_META_DATA_QUEUE";
+    echo "memory.max=$$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo n/a)";
     echo "retry=$$BUILDKITE_RETRY_COUNT"
 steps:
-  - label: "wide"
-    command: "eval \"$$PROBE\"; sleep 45"
-    agents: {queue: "default", pool: "sized", sched_cpus: "12", sched_threads: "12", sched_mem_gib: "8"}
-  - label: "medium"
-    command: "eval \"$$PROBE\"; sleep 20"
-    agents: {queue: "default", pool: "sized", sched_cpus: "4", sched_threads: "4", sched_mem_gib: "8"}
   - label: "untagged"
+    command: "eval \"$$PROBE\"; sleep 30"
+    agents: {queue: "default", pool: "sized"}
+  - label: "untagged-oom"
+    command: "eval \"$$PROBE\"; x=$$(head -c 6G /dev/zero | tr '\\0' a); echo survived $${#x}"
+    agents: {queue: "default", pool: "sized"}
+    soft_fail: true
+  - label: "partial"
     command: "echo should not run; exit 1"
     agents: {queue: "default", pool: "sized", sched_cpus: "4"}
     soft_fail: true
-  - label: "small"
-    command: "eval \"$$PROBE\"; sleep 5"
-    agents: {queue: "default", pool: "sized", sched_cpus: "1", sched_threads: "2", sched_mem_gib: "2"}
-  - label: "oom"
-    command: "eval \"$$PROBE\"; x=$$(head -c 3G /dev/zero | tr '\\0' a); echo survived $${#x}"
-    agents: {queue: "default", pool: "sized", sched_cpus: "1", sched_threads: "1", sched_mem_gib: "1"}
-    soft_fail: true
+  - label: "tagged"
+    command: "eval \"$$PROBE\"; sleep 10"
+    agents: {queue: "default", pool: "sized", sched_cpus: "8", sched_threads: "8", sched_mem_gib: "2"}
   - label: "stop"
     command: "eval \"$$PROBE\"; if [ \"$$BUILDKITE_RETRY_COUNT\" = 0 ]; then sleep 900; fi"
-    agents: {queue: "default", pool: "sized", sched_cpus: "2", sched_threads: "2", sched_mem_gib: "4"}
+    agents: {queue: "default", pool: "sized"}
     retry:
       automatic:
         - exit_status: -1

@@ -1,0 +1,35 @@
+# Per-job resource reporting e2e (sandboxed-buildkite-agent#187 at ca810f1).
+# Every step has a unique pool tag, so only the test groups take them.
+steps:
+  - label: "linux-short"
+    command: "echo \"hello from $$BUILDKITE_AGENT_NAME\"; sleep 3"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-linux", sched_cpus: "4", sched_mem_gib: "4"}
+  - label: "linux-load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-linux", sched_cpus: "4", sched_mem_gib: "4"}
+  - label: "windows-short"
+    command: "echo \"hello from $$BUILDKITE_AGENT_NAME\"; sleep 3"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-win", sched_cpus: "4", sched_threads: "4", sched_mem_gib: "8"}
+  - label: "windows-load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-win", sched_cpus: "4", sched_threads: "4", sched_mem_gib: "8"}
+  - label: "freebsd-short"
+    command: "echo \"hello from $$BUILDKITE_AGENT_NAME\"; sleep 3"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-bsd", sched_cpus: "4", sched_threads: "4", sched_mem_gib: "8"}
+  - label: "freebsd-load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-bsd", sched_cpus: "4", sched_threads: "4", sched_mem_gib: "8"}
+  - label: "macos-short"
+    command: "echo \"hello from $$BUILDKITE_AGENT_NAME\"; sleep 3"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-mac"}
+  - label: "macos-load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "jm-mac"}

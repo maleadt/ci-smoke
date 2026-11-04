@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Known load for the resource record: two busy CPUs and LOAD_MIB (1024) MiB of
-# touched, incompressible memory for LOAD_SECONDS (30).
+# touched, incompressible memory for LOAD_SECONDS (30), then LOAD_WRITE_MIB (0)
+# MiB written to disk.
 set -u
 secs=${LOAD_SECONDS:-30} mib=${LOAD_MIB:-1024}
 echo "uname: $(uname -a)"
@@ -17,4 +18,9 @@ ps -axo rss,comm 2>/dev/null | grep -E '[ /](perl|dd)(\.exe)?$' || ps 2>/dev/nul
 sleep $((secs - 10))
 kill "${p1}" "${p2}" 2>/dev/null
 wait
+if [ "${LOAD_WRITE_MIB:-0}" -gt 0 ]; then
+    f=$(mktemp "${TMPDIR:-/tmp}/write.XXXXXX")
+    dd if=/dev/urandom of="$f" bs=1M count="${LOAD_WRITE_MIB}" conv=fsync 2>&1 | tail -1
+    rm -f "$f"
+fi
 echo "load done $(date -u +%H:%M:%S)"

@@ -1,27 +1,24 @@
-# sandboxed-buildkite-agent tb/sba-rename (97dbe1b): `sba stop` while Linux,
-# Windows and FreeBSD jobs run, and while a Windows guest is still booting
-# ("late", released by "gate"). Each hold passes at once when retried.
+# sandboxed-buildkite-agent#187 (tb/job-memory-fixes 6d7d6de) resource records:
+# a known load (2 busy CPUs, 1 GiB held, 30 s) on every platform, and an OOM.
 steps:
-  - label: "linux hold"
-    command: "bash .buildkite/hold.sh"
-    timeout_in_minutes: 30
-    agents: {queue: "default", pool: "sba-linux", sched_cpus: "2", sched_mem_gib: "4"}
-  - label: "windows hold"
-    command: "bash .buildkite/hold.sh"
-    timeout_in_minutes: 30
+  - label: "linux load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 15
+    agents: {queue: "default", pool: "sba-linux", sched_cpus: "2", sched_cpus_limit: "4", sched_mem_gib: "4"}
+  - label: "linux oom (limit 1 GiB, allocates 3 GiB)"
+    command: "echo start; x=$$(head -c 3G /dev/zero | tr '\\0' a); echo survived $${#x}"
+    soft_fail: true
+    timeout_in_minutes: 15
+    agents: {queue: "default", pool: "sba-linux", sched_cpus: "1", sched_mem_gib: "1"}
+  - label: "windows load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 20
     agents: {queue: "default", pool: "sba-win", sched_cpus: "4", sched_mem_gib: "8"}
-  - label: "freebsd hold"
-    command: "bash .buildkite/hold.sh"
-    timeout_in_minutes: 30
-    agents: {queue: "default", pool: "sba-bsd", sched_cpus: "2", sched_mem_gib: "4"}
-  - label: "gate"
-    key: "gate"
-    command: "sleep 120"
-    timeout_in_minutes: 10
-    agents: {queue: "default", pool: "sba-linux"}
-  - label: "windows late (booting at the stop)"
-    depends_on: "gate"
-    command: "bash .buildkite/hold.sh"
-    env: {HOLD_SECONDS: "30", HOLD_PASS: "1"}
-    timeout_in_minutes: 30
-    agents: {queue: "default", pool: "sba-win", sched_cpus: "4", sched_mem_gib: "8"}
+  - label: "freebsd load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "sba-bsd", sched_cpus: "4", sched_mem_gib: "8"}
+  - label: "macos load"
+    command: "bash .buildkite/load.sh"
+    timeout_in_minutes: 20
+    agents: {queue: "default", pool: "sba-mac"}

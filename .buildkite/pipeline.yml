@@ -1,31 +1,27 @@
-# sandboxed-buildkite-agent tb/sba-rename (97dbe1b) end-to-end checks on pegasus.
-# Every step carries a pool tag only the sba-smoke scheduler's groups advertise.
+# sandboxed-buildkite-agent tb/sba-rename (97dbe1b): `sba stop` while Linux,
+# Windows and FreeBSD jobs run, and while a Windows guest is still booting
+# ("late", released by "gate"). Each hold passes at once when retried.
 steps:
-  - label: "old-name sched_threads (must fail with rename message)"
-    command: "echo should not run; exit 1"
-    soft_fail: true
+  - label: "linux hold"
+    command: "bash .buildkite/hold.sh"
+    timeout_in_minutes: 30
+    agents: {queue: "default", pool: "sba-linux", sched_cpus: "2", sched_mem_gib: "4"}
+  - label: "windows hold"
+    command: "bash .buildkite/hold.sh"
+    timeout_in_minutes: 30
+    agents: {queue: "default", pool: "sba-win", sched_cpus: "4", sched_mem_gib: "8"}
+  - label: "freebsd hold"
+    command: "bash .buildkite/hold.sh"
+    timeout_in_minutes: 30
+    agents: {queue: "default", pool: "sba-bsd", sched_cpus: "2", sched_mem_gib: "4"}
+  - label: "gate"
+    key: "gate"
+    command: "sleep 120"
     timeout_in_minutes: 10
-    agents: {queue: "default", pool: "sba-linux", sched_cpus: "2", sched_threads: "2", sched_mem_gib: "2"}
-  - label: "typo sched_mem_limt_gib (must fail naming the key)"
-    command: "echo should not run; exit 1"
-    soft_fail: true
-    timeout_in_minutes: 10
-    agents: {queue: "default", pool: "sba-linux", sched_cpus: "2", sched_mem_gib: "2", sched_mem_limt_gib: "4"}
-  - label: "linux cpus (limit 3)"
-    command: "bash .buildkite/cpus.sh"
-    env: {EXPECT_CPUS: "3"}
-    timeout_in_minutes: 15
-    agents: {queue: "default", pool: "sba-linux", sched_cpus: "2", sched_cpus_limit: "3", sched_mem_gib: "4"}
-  - label: "linux cpus (untagged, default 1/2)"
-    command: "bash .buildkite/cpus.sh"
-    env: {EXPECT_CPUS: "2"}
-    timeout_in_minutes: 15
     agents: {queue: "default", pool: "sba-linux"}
-  - label: "windows short (tagged)"
-    command: "echo \"hello from $$BUILDKITE_AGENT_NAME\"; nproc; sleep 3"
-    timeout_in_minutes: 20
-    agents: {queue: "default", pool: "sba-win", sched_cpus: "2", sched_cpus_limit: "4", sched_mem_gib: "4", sched_mem_limit_gib: "8"}
-  - label: "freebsd short (untagged)"
-    command: "echo \"hello from $$BUILDKITE_AGENT_NAME\"; sysctl -n hw.ncpu; sleep 3"
-    timeout_in_minutes: 20
-    agents: {queue: "default", pool: "sba-bsd"}
+  - label: "windows late (booting at the stop)"
+    depends_on: "gate"
+    command: "bash .buildkite/hold.sh"
+    env: {HOLD_SECONDS: "30", HOLD_PASS: "1"}
+    timeout_in_minutes: 30
+    agents: {queue: "default", pool: "sba-win", sched_cpus: "4", sched_mem_gib: "8"}

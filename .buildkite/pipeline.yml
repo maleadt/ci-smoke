@@ -1,0 +1,10 @@
+# Job acquisition token probe (sandboxed-buildkite-agent tb/job-acquisition-tokens).
+# Create a build with the env var JAT_OS set to linux, macos, windows or freebsd;
+# the probe runs on that OS only.
+steps:
+  - label: "jat probe ${JAT_OS:-none}"
+    command: "bash .buildkite/jat-probe.sh"
+    if: build.env("JAT_OS") != null
+    agents:
+      queue: "default"
+      os: "${JAT_OS:-none}"

@@ -1,0 +1,11 @@
+# Protected cache tier (sandboxed-buildkite-agent tb/protected-cache): print the
+# claims the scheduler classifies the job by, and the cache it was given.
+steps:
+  - label: "cache tier probe"
+    command: |
+      echo "source=$$BUILDKITE_SOURCE branch=$$BUILDKITE_BRANCH tag=$$BUILDKITE_TAG pull_request=$$BUILDKITE_PULL_REQUEST agent=$$BUILDKITE_AGENT_NAME"
+      echo "build path: $$PWD"
+      mkdir -p "$$BUILDKITE_BUILD_PATH/../tier-probe" && date > "$$BUILDKITE_BUILD_PATH/../tier-probe/$$BUILDKITE_JOB_ID"
+      ls "$$BUILDKITE_BUILD_PATH/../tier-probe"
+    agents:
+      queue: "default"

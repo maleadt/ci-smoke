@@ -98,10 +98,14 @@ PY
         "${BUILDKITE_BIN_PATH:-}" /private/tmp/bk-ci-smoke "$PWD"
     ;;
 FreeBSD)
+    # The agent is started by root, so only root can read its environment;
+    # use sudo when the job has it (it then sees everything in the guest).
+    as=""
+    sudo -n true 2>/dev/null && as="sudo -n" && echo "using sudo"
     n=0
     for pid in $(ps -ax -o pid=); do
         n=$((n + 1))
-        out=$(procstat -e "$pid" 2>/dev/null; procstat -c "$pid" 2>/dev/null)
+        out=$($as procstat -e "$pid" 2>/dev/null; $as procstat -c "$pid" 2>/dev/null)
         token=$(printf '%s\n' "$out" | grep -o 'BUILDKITE_AGENT_TOKEN=[^ ]*' | head -n1)
         [ -n "$token" ] && report "pid $pid" "${token#BUILDKITE_AGENT_TOKEN=}"
         if printf '%s\n' "$out" | grep -q -E "$cluster"; then

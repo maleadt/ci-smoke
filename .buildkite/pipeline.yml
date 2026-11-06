@@ -1,8 +1,35 @@
-# Nested sandbox through the sandbox plugin, as julia-buildkite runs it, to
-# check SANDBOX_PERSISTENCE_DIR=/persist (sandboxed-buildkite-agent 23562de).
+# Job isolation (Sandbox.jl tb/isolation, sandboxed-buildkite-agent tb/sandbox-isolation):
+# a job in the sba sandbox, and nested sandboxes through the sandbox plugin as
+# julia-buildkite runs them.
 steps:
-  - label: "nested sandbox {{matrix}}"
-    matrix: ["1", "2"]
+  - label: "isolation probe"
+    command: |
+      set -u
+      echo "agent=$$BUILDKITE_AGENT_NAME"
+      fail=0
+      check() { if [ "$$2" = "$$3" ]; then echo "ok   $$1: $$2"; else echo "FAIL $$1: got '$$2', want '$$3'"; fail=1; fi; }
+      deny() { if sh -c "$$2" >/dev/null 2>&1; then echo "FAIL $$1 succeeded"; fail=1; else echo "ok   $$1 denied"; fi; }
+      check cgroup "$$(cat /proc/self/cgroup)" "0::/"
+      check cgroupfs "$$(stat -f -c %T /sys/fs/cgroup)" "cgroup2fs"
+      grep ' /sys/fs/cgroup ' /proc/self/mounts
+      echo "memory.max=$$(cat /sys/fs/cgroup/memory.max) cpu.weight=$$(cat /sys/fs/cgroup/cpu.weight) cpuset=$$(cat /sys/fs/cgroup/cpuset.cpus.effective)"
+      check shm "$$(stat -f -c %T /dev/shm)" "tmpfs"
+      deny own-limit "echo max > /sys/fs/cgroup/memory.max"
+      deny umount "umount /sys/fs/cgroup"
+      deny lazy-umount "umount -l /sys/fs/cgroup"
+      deny remount-rw "mount -o remount,bind,rw /sys/fs/cgroup"
+      deny cgroup2-elsewhere "mkdir -p /tmp/cg && mount -t cgroup2 none /tmp/cg"
+      deny rbind-umount "mkdir -p /tmp/s && mount --rbind /sys /tmp/s && umount /tmp/s/fs/cgroup"
+      deny cgroupns-own-limit "mkdir -p /tmp/c && unshare -C sh -c 'mount -t cgroup2 none /tmp/c && echo max > /tmp/c/memory.max'"
+      exit $$fail
+    agents:
+      queue: "default"
+      sandbox_capable: "true"
+      os: "linux"
+      arch: "x86_64"
+
+  - label: "nested sandbox uid={{matrix}}"
+    matrix: ["1000", "0"]
     plugins:
       - JuliaCI/julia#v1:
           persist_depot_dirs: packages,artifacts,compiled
@@ -10,16 +37,18 @@ steps:
       - JuliaCI/sandbox#v2:
           rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v8.12/julia_publish.x86_64.tar.gz
           rootfs_treehash: "14bd23d733e8c474a078d55ab313420fd6deee02"
-          uid: 1000
-          gid: 1000
+          uid: "{{matrix}}"
+          gid: "{{matrix}}"
     command: |
       set -eux
       echo "agent=$$BUILDKITE_AGENT_NAME"
       id; uname -a; cat /etc/os-release | head -2
-      ls -la /etc/marker 2>/dev/null || echo "no marker from an earlier job"
+      cat /proc/self/cgroup
+      ls /sys/fs/cgroup | head -5
       echo "written by $$BUILDKITE_JOB_ID" > "$$HOME/marker" || true
-      aws --version
-      dd if=/dev/zero of=/tmp/blob bs=1M count=64 status=none && rm /tmp/blob
+      dd if=/dev/zero of=/tmp/blob bs=1M count=64 status=none
+      dd if=/dev/zero of=/dev/shm/blob bs=1M count=16 status=none
+      julia -e 'println(length(Sys.cpu_info()), " cpus; constrained memory ", Sys.constrained_memory() >> 20, " MiB")'
     agents:
       queue: "default"
       sandbox_capable: "true"

@@ -5,7 +5,7 @@
 set -u
 fail=0
 seen_jat=0
-cluster='bkct_[A-Za-z0-9]{40,}'
+cluster='bkct_[A-Za-z0-9._-]{40,}'
 
 report() {  # where value
     echo "$1: BUILDKITE_AGENT_TOKEN prefix=${2:0:6} length=${#2}"

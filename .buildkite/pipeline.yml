@@ -48,7 +48,7 @@ steps:
       echo "written by $$BUILDKITE_JOB_ID" > "$$HOME/marker" || true
       dd if=/dev/zero of=/tmp/blob bs=1M count=64 status=none
       dd if=/dev/zero of=/dev/shm/blob bs=1M count=16 status=none
-      julia -e 'println(length(Sys.cpu_info()), " cpus; constrained memory ", Sys.constrained_memory() >> 20, " MiB")'
+      nproc; grep -E '^(MemTotal|Shmem)' /proc/meminfo
     agents:
       queue: "default"
       sandbox_capable: "true"

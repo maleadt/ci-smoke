@@ -1,10 +1,40 @@
-# Job acquisition token probe (sandboxed-buildkite-agent tb/job-acquisition-tokens).
-# Create a build with the env var JAT_OS set to linux, macos, windows or freebsd;
-# the probe runs on that OS only.
+# Combined e2e of sandboxed-buildkite-agent tb/rollout-196-198 (#196 + #197 + #198).
+# Create a build with env PROBE listing the targets (linux, freebsd, windows, macos),
+# FAIL=1 for a failing step, HOLD listing the targets of hold steps (for a stop).
+# A plain push only runs the upload step.
 steps:
-  - label: "jat probe ${JAT_OS:-none}"
-    command: "bash .buildkite/jat-probe.sh"
-    if: build.env("JAT_OS") != null
-    agents:
-      queue: "default"
-      os: "${JAT_OS:-none}"
+  - label: "jat probe linux"
+    command: "bash .buildkite/tier.sh; bash .buildkite/jat-probe.sh"
+    if: build.env("PROBE") =~ /linux/
+    agents: {queue: "default", pool: "r-linux"}
+  - label: "jat probe freebsd"
+    command: "bash .buildkite/tier.sh; bash .buildkite/jat-probe.sh"
+    if: build.env("PROBE") =~ /freebsd/
+    agents: {queue: "default", pool: "r-bsd"}
+  - label: "jat probe windows"
+    command: "bash .buildkite/tier.sh; bash .buildkite/jat-probe.sh"
+    if: build.env("PROBE") =~ /windows/
+    agents: {queue: "default", pool: "r-win"}
+  - label: "jat probe macos"
+    command: "bash .buildkite/tier.sh; bash .buildkite/jat-probe.sh"
+    if: build.env("PROBE") =~ /macos/
+    agents: {queue: "default", pool: "r-mac"}
+  - label: "fail linux (exit 3)"
+    command: "bash .buildkite/tier.sh; echo failing on purpose; exit 3"
+    if: build.env("FAIL") == "1"
+    agents: {queue: "default", pool: "r-linux"}
+  - label: "linux hold"
+    command: "bash .buildkite/tier.sh; bash .buildkite/hold.sh"
+    if: build.env("HOLD") =~ /linux/
+    timeout_in_minutes: 30
+    agents: {queue: "default", pool: "r-linux"}
+  - label: "freebsd hold"
+    command: "bash .buildkite/tier.sh; bash .buildkite/hold.sh"
+    if: build.env("HOLD") =~ /freebsd/
+    timeout_in_minutes: 30
+    agents: {queue: "default", pool: "r-bsd"}
+  - label: "windows hold"
+    command: "bash .buildkite/tier.sh; bash .buildkite/hold.sh"
+    if: build.env("HOLD") =~ /windows/
+    timeout_in_minutes: 30
+    agents: {queue: "default", pool: "r-win"}

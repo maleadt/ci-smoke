@@ -86,7 +86,7 @@ PY
         3) ;;
         *) fail=1 ;;
     esac
-    for secret in /Users/tim/Julia/tools/ci/julia/sba-jat/agent/secrets/buildkite-agent-token \
+    for secret in /Users/tim/Julia/tools/ci/julia/sba-jat/agent/secrets/buildkite-agent-token /Users/tim/Julia/tools/ci/julia/sba-rollout/agent/secrets/buildkite-agent-token \
                   /Users/tim/Julia/tools/ci/julia/sandboxed-buildkite-agent/agent/secrets/buildkite-agent-token; do
         if cat "$secret" >/dev/null 2>&1; then
             echo "FAIL: $secret is readable"; fail=1

@@ -9,6 +9,10 @@ $os = Get-CimInstance Win32_OperatingSystem
 $ubr = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').UBR
 "$($os.Caption) $($os.Version).$ubr, installed $($os.InstallDate.ToString('u'))"
 Get-HotFix | Sort-Object InstalledOn | Select-Object -Last 3 | Format-Table -AutoSize HotFixID, Description, InstalledOn | Out-String -Width 200
+if (Test-Path C:\Windows\Temp\win-updates.log) {
+    Write-Output 'Windows Update log of the base build (C:\Windows\Temp\win-updates.log):'
+    Get-Content C:\Windows\Temp\win-updates.log | Select-String -Pattern 'Adding:|Cycle|Done|Stopping|Error|Restart Required|updates? (found|to)' | Select-Object -Last 40 | ForEach-Object Line
+}
 cscript //nologo C:\Windows\System32\slmgr.vbs /dli
 cscript //nologo C:\Windows\System32\slmgr.vbs /xpr
 $timeout = (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control -ErrorAction SilentlyContinue).ServicesPipeTimeout

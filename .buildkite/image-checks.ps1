@@ -1,4 +1,5 @@
-# Checks of a Windows worker image without Docker (sba tb/remove-docker-windows).
+# Checks of a Windows worker image without Docker (sba tb/remove-docker-windows,
+# tb/windows-server-2025).
 # Usage: powershell -NoProfile -File image-checks.ps1 write|read
 param([string]$mode)
 $ErrorActionPreference = 'Stop'
@@ -34,6 +35,42 @@ if ($service) { $failures += 'docker service' }
 if ($feature.Installed) { $failures += 'Containers feature installed' }
 Get-NetAdapter | Format-Table -AutoSize Name, InterfaceDescription, Status | Out-String -Width 200
 Get-NetIPAddress -AddressFamily IPv4 | Format-Table -AutoSize InterfaceAlias, IPAddress, PrefixOrigin, AddressState | Out-String -Width 200
+
+Write-Output '--- Visual C++ redistributables'
+Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' |
+    Where-Object DisplayName -like 'Microsoft Visual C++*' | Sort-Object DisplayName | ForEach-Object DisplayName
+
+Write-Output '--- Defender'
+Get-WindowsFeature Windows-Defender | Format-Table -AutoSize Name, InstallState | Out-String -Width 200
+
+Write-Output '--- OpenSSH'
+$sshDir = 'C:\Windows\System32\OpenSSH'
+cmd /c "`"$sshDir\ssh.exe`" -V 2>&1"
+foreach ($svc in 'sshd', 'ssh-agent') {
+    $s = Get-Service $svc -ErrorAction SilentlyContinue
+    "${svc}: $(if ($s) { "$($s.Status), $($s.StartType)" } else { 'absent' })"
+}
+if (-not (Get-NetTCPConnection -LocalPort 22 -State Listen -ErrorAction SilentlyContinue)) { $failures += 'sshd not listening on 22' }
+$rule = Get-NetFirewallRule -Name 'OpenSSH-Server-In-TCP' -ErrorAction SilentlyContinue
+"firewall rule OpenSSH-Server-In-TCP: $(if ($rule) { "enabled $($rule.Enabled), profile $($rule.Profile)" } else { 'absent' }); network category $((Get-NetConnectionProfile).NetworkCategory -join ', ')"
+if (-not $rule -or $rule.Enabled -ne 'True') { $failures += 'sshd firewall rule' }
+$keyscan = cmd /c "`"$sshDir\ssh-keyscan.exe`" github.com 2>&1"
+$keyscan | Where-Object { $_ -match '^github\.com ' } | ForEach-Object { "keyscan: $($_.Substring(0, [Math]::Min(70, $_.Length)))..." }
+if (-not ($keyscan -match '^github\.com ssh-ed25519 ')) { $failures += 'ssh-keyscan github.com'; $keyscan }
+$tmp = Join-Path $env:TEMP ('sshtest-' + [guid]::NewGuid())
+New-Item -ItemType Directory $tmp | Out-Null
+cmd /c "`"$sshDir\ssh-keygen.exe`" -q -t ed25519 -N `"`" -f `"$tmp\id`""
+# A throwaway key: GitHub must refuse it after key exchange and authentication negotiated.
+$github = cmd /c "`"$sshDir\ssh.exe`" -T -i `"$tmp\id`" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=`"$tmp\known_hosts`" git@github.com 2>&1"
+"ssh -T git@github.com: $github"
+if (-not ($github -match 'Permission denied \(publickey\)')) { $failures += 'ssh to github.com' }
+Start-Service ssh-agent
+cmd /c "`"$sshDir\ssh-add.exe`" `"$tmp\id`" 2>&1"
+$listed = cmd /c "`"$sshDir\ssh-add.exe`" -l 2>&1"
+"ssh-add -l: $listed"
+if (-not ($listed -match 'ED25519')) { $failures += 'ssh-agent' }
+cmd /c "`"$sshDir\ssh-add.exe`" -D 2>&1" | Out-Null
+Stop-Service ssh-agent
 
 Write-Output '--- Cache volume'
 $partition = Get-Partition -DriveLetter Z

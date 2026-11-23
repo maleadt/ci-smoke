@@ -1,13 +1,15 @@
-# Windows worker images without Docker (sandboxed-buildkite-agent tb/remove-docker-windows),
-# run by a real agent on a KVM Windows worker: image checks, then julia-buildkite main's
-# build_windows.yml step (toolchain tree installed into the julia plugin's depot), a warm job
-# and a cancel. One slot, so all jobs share one cache pool and each boots a fresh OS overlay.
+# Windows Server 2025 worker images (sandboxed-buildkite-agent tb/windows-server-2025), run
+# by a real agent on a KVM Windows worker: image checks, julia-buildkite main's
+# build_windows.yml and test_windows.yml steps for julia master (the commits of julia-ci
+# 1728), a release-1.13 i686 build (julia-buildkite#818's commands and v8.5 tree), a warm
+# job and a cancel. One slot, so all jobs share one cache pool and each boots a fresh OS
+# overlay.
 #
-# The build stops at the S3 staging upload: there is no staging role for ci-smoke.
+# The builds stop at the S3 staging upload: there is no staging role for ci-smoke.
 env:
   JULIA_BUILDKITE_COMMIT: "e973bae5430d49eda0c97cf3f86eee576c2c5739"
   JULIA_COMMIT: "b2052f278a83861f09bd4c05e683132adbfd201a"
-  SBA_BRANCH: "tb/remove-docker-windows"
+  SBA_BRANCH: "tb/windows-server-2025"
 
 steps:
   - label: ":windows: image checks"
@@ -27,7 +29,7 @@ steps:
       arch: "x86_64"
 
   - label: ":windows: build x86_64-w64-mingw32 (cold toolchain)"
-    key: "build"
+    key: "build_x86_64-w64-mingw32"
     depends_on: "checks"
     allow_dependency_failure: true
     plugins:
@@ -60,9 +62,37 @@ steps:
       MAKE_FLAGS: "VERBOSE=1,JL_CFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JL_CXXFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JULIA_INSTALL_DOCS=0"
       JULIA_CI_BUILD_MODE: ""
 
+  - label: ":windows: test x86_64-w64-mingw32"
+    key: "test_x86_64-w64-mingw32"
+    depends_on: "build_x86_64-w64-mingw32"
+    allow_dependency_failure: true
+    plugins:
+      - JuliaCI/coreupload#v2:
+          core_pattern: "C:/buildkite-agent/dumps/*.dmp"
+          compressor: "zstd"
+          max_uploads: 3
+    commands: |
+      set -euo pipefail
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaLang/julia.git julia-src
+      git -C julia-src checkout -q "$${JULIA_COMMIT}"
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git julia-src/.buildkite
+      git -C julia-src/.buildkite checkout -q "$${JULIA_BUILDKITE_COMMIT}"
+      cd julia-src
+      # The command of julia-buildkite's test_windows.yml
+      bash .buildkite/utilities/test_julia.sh
+    timeout_in_minutes: 225
+    agents:
+      queue: "default"
+      os: "windows"
+      arch: "x86_64"
+    env:
+      JULIA_SHELL: "/bin/bash"
+      TRIPLET: "x86_64-w64-mingw32"
+      JL_DUMP_COUNT: "3"
+
   - label: ":windows: warm toolchain, environment"
     key: "warm"
-    depends_on: "build"
+    depends_on: "test_x86_64-w64-mingw32"
     allow_dependency_failure: true
     plugins:
       - JuliaCI/julia#v1:
@@ -105,9 +135,42 @@ steps:
       os: "windows"
       arch: "x86_64"
 
+  - label: ":windows: build i686-w64-mingw32 release-1.13 (julia-buildkite#818)"
+    key: "build_i686"
+    depends_on: "warm"
+    allow_dependency_failure: true
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+    commands: |
+      set -euo pipefail
+      echo "--- Check out julia and julia-buildkite"
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaLang/julia.git julia-src
+      git -C julia-src checkout -q b4ebe6c9c445318de8041aa2cfd8179548f13ef1
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git julia-src/.buildkite
+      git -C julia-src/.buildkite fetch -q origin pull/818/head
+      git -C julia-src/.buildkite checkout -q a5772055809ccdd0a3fc4fdf56fc68f49404aad8
+      cd julia-src
+      echo "--- Install the toolchain"
+      TOOLCHAIN="$$(julia --startup-file=no .buildkite/utilities/windows/install_toolchain.jl \
+                      "package_windows.i686.v8.5" "178712d45afd0bf134c5419f030ba15f33faa8da")"
+      unset JULIA_DEPOT_PATH
+      bash .buildkite/utilities/windows/toolchain.sh --root "$${TOOLCHAIN}" .buildkite/utilities/build_julia.sh
+    timeout_in_minutes: 150
+    agents:
+      queue: "default"
+      os: "windows"
+      arch: "x86_64"
+    env:
+      TRIPLET: "i686-w64-mingw32"
+      MAKE_FLAGS: "VERBOSE=1,JL_CFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JL_CXXFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JULIA_INSTALL_DOCS=0"
+      JULIA_CI_BUILD_MODE: ""
+
   - label: ":windows: cancel inside the toolchain"
     key: "cancel"
-    depends_on: "warm"
+    depends_on: "build_i686"
     allow_dependency_failure: true
     plugins:
       - JuliaCI/julia#v1:

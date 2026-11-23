@@ -1,0 +1,111 @@
+# sandboxed-buildkite-agent's artifact store for Julia's Linux jobs, on a linux-sandbox
+# group with `artifact_store` and three slots. Two artifacts each get into three cache pools:
+# a stand-in the Pkg server serves today (Sandbox.jl's multiarch-rootfs), through the julia
+# plugin, and the v8.14 tester_linux rootfs of julia-buildkite main, through the sandbox
+# plugin (the Pkg server serves it once RootfsImages 8.14.0 is registered). Each fill job
+# sleeps, so that the three of a step run at once and land in three slots. After the block
+# step, the checks expect both artifacts in /artifact-store and the pools' copies gone.
+env:
+  STANDIN_HASH: "b9bc181be08c4a0598539af7ef93340778df527c"
+  ROOTFS_HASH: "9a9c90f4967a788db36f48c9fb8c0c9bfa4f3c04"
+
+steps:
+  - label: ":linux: fill: stand-in artifact (%n)"
+    key: "fill-standin"
+    parallelism: 3
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+    commands: |
+      set -euo pipefail
+      .buildkite/depot.sh
+      julia --startup-file=no -e '
+          using Pkg.Artifacts
+          h = Base.SHA1(ENV["STANDIN_HASH"])
+          if artifact_exists(h)
+              println("already installed")
+          else
+              @time download_artifact(h, "https://pkg.julialang.org/artifact/$$(ENV["STANDIN_HASH"])") === true || exit(1)
+          end
+          println("artifact_path: ", artifact_path(h))'
+      sleep 60
+    agents:
+      queue: "default"
+      os: "linux"
+      sandbox_capable: "true"
+
+  - wait: ~
+    continue_on_failure: true
+
+  - label: ":linux: fill: tester_linux v8.14 rootfs (%n)"
+    key: "fill-rootfs"
+    parallelism: 3
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+      - JuliaCI/sandbox#v2:
+          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v8.14/tester_linux.x86_64.tar.gz
+          rootfs_treehash: "9a9c90f4967a788db36f48c9fb8c0c9bfa4f3c04"
+          uid: 1000
+          gid: 1000
+    commands: |
+      grep PRETTY_NAME /etc/os-release
+      echo "rootfs mounted from: $$(awk '$$5 == "/" {print $$4}' /proc/self/mountinfo)"
+      sleep 60
+    agents:
+      queue: "default"
+      os: "linux"
+      sandbox_capable: "true"
+
+  - block: "Store filled"
+    prompt: "Unblock once the store holds both artifacts and the pools are idle"
+
+  - label: ":linux: check: stand-in from the store"
+    key: "check-standin"
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+    commands: |
+      set -euo pipefail
+      .buildkite/depot.sh
+      julia --startup-file=no -e '
+          using Pkg.Artifacts
+          h = Base.SHA1(ENV["STANDIN_HASH"])
+          println("artifact_exists: ", artifact_exists(h))
+          println("artifact_path: ", artifact_path(h))
+          startswith(artifact_path(h), "/artifact-store/") || exit(1)'
+    agents:
+      queue: "default"
+      os: "linux"
+      sandbox_capable: "true"
+
+  - label: ":linux: check: tester_linux rootfs from the store"
+    key: "check-rootfs"
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+      - JuliaCI/sandbox#v2:
+          rootfs_url: https://github.com/JuliaCI/rootfs-images/releases/download/v8.14/tester_linux.x86_64.tar.gz
+          rootfs_treehash: "9a9c90f4967a788db36f48c9fb8c0c9bfa4f3c04"
+          uid: 1000
+          gid: 1000
+          verbose: true
+    commands: |
+      set -euo pipefail
+      grep PRETTY_NAME /etc/os-release
+      root="$$(awk '$$5 == "/" {print $$4}' /proc/self/mountinfo)"
+      echo "rootfs mounted from: $${root}"
+      [[ "$${root}" == */depot/artifacts/$${ROOTFS_HASH} && "$${root}" != *julia-buildkite-plugin* ]]
+      gcc --version | head -1
+    agents:
+      queue: "default"
+      os: "linux"
+      sandbox_capable: "true"

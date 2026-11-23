@@ -54,7 +54,7 @@ steps:
           gid: 1000
     commands: |
       grep PRETTY_NAME /etc/os-release
-      echo "rootfs mounted from: $$(awk '$$5 == "/" {print $$4}' /proc/self/mountinfo)"
+      echo "root mount: $$(awk '$$5 == "/"' /proc/self/mountinfo)"
       sleep 60
     agents:
       queue: "default"
@@ -101,10 +101,12 @@ steps:
     commands: |
       set -euo pipefail
       grep PRETTY_NAME /etc/os-release
-      root="$$(awk '$$5 == "/" {print $$4}' /proc/self/mountinfo)"
-      echo "rootfs mounted from: $${root}"
-      [[ "$${root}" == */depot/artifacts/$${ROOTFS_HASH} && "$${root}" != *julia-buildkite-plugin* ]]
+      root="$$(awk '$$5 == "/"' /proc/self/mountinfo)"
+      echo "root mount: $${root}"
+      [[ "$${root}" == *lowerdir=/artifact-store/artifacts/$${ROOTFS_HASH}* ]]
       gcc --version | head -1
+      echo "--- write into the rootfs overlay"
+      touch /var/tmp/smoke-overlay && ls -la /var/tmp/smoke-overlay
     agents:
       queue: "default"
       os: "linux"

@@ -1,0 +1,109 @@
+# Windows build step of julia-buildkite#816 (tb/rootfs-scheme), run by a real agent on a
+# KVM Windows worker: the toolchain is a rootfs-images tree installed into the julia
+# plugin's depot instead of the package-windows Docker image. The three jobs share one cache
+# pool (one slot), so the second and third find the toolchain installed already.
+#
+# The build stops at the S3 staging upload: there is no staging role for ci-smoke.
+env:
+  JULIA_BUILDKITE_COMMIT: "2ba82490aad21d61b8cdb450640e0543cac9216b"
+  JULIA_COMMIT: "562474cbd28258fdf04731b001ece9f4cd2f6171"
+
+steps:
+  - label: ":windows: build x86_64-w64-mingw32 (cold toolchain)"
+    key: "build"
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+    commands: |
+      set -euo pipefail
+      echo "--- Check out julia and julia-buildkite"
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaLang/julia.git julia-src
+      git -C julia-src checkout -q "$${JULIA_COMMIT}"
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git julia-src/.buildkite
+      git -C julia-src/.buildkite checkout -q "$${JULIA_BUILDKITE_COMMIT}"
+      cd julia-src
+      # From here on: the commands of julia-buildkite's build_windows.yml
+      echo "--- Install the toolchain"
+      TOOLCHAIN="$$(julia --startup-file=no .buildkite/utilities/windows/install_toolchain.jl \
+                      "package_windows.x86_64.v8.10" "c05b25a4e8ce4cdfca1960f1c226368c7913dc82")"
+      unset JULIA_DEPOT_PATH
+      bash .buildkite/utilities/windows/toolchain.sh --root "$${TOOLCHAIN}" .buildkite/utilities/build_julia.sh
+    timeout_in_minutes: 120
+    agents:
+      queue: "default"
+      os: "windows"
+      arch: "x86_64"
+    env:
+      TRIPLET: "x86_64-w64-mingw32"
+      # build_windows.arches, plus what julia-pr builds get (no HTML manual)
+      MAKE_FLAGS: "VERBOSE=1,JL_CFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JL_CXXFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JULIA_INSTALL_DOCS=0"
+      JULIA_CI_BUILD_MODE: ""
+
+  - label: ":windows: warm toolchain, environment"
+    key: "warm"
+    depends_on: "build"
+    allow_dependency_failure: true
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+    commands: |
+      set -euo pipefail
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git .jb
+      git -C .jb checkout -q "$${JULIA_BUILDKITE_COMMIT}"
+      echo "--- Install the toolchain (expect no download)"
+      start=$$(date +%s)
+      TOOLCHAIN="$$(julia --startup-file=no .jb/utilities/windows/install_toolchain.jl \
+                      "package_windows.x86_64.v8.10" "c05b25a4e8ce4cdfca1960f1c226368c7913dc82")"
+      echo "installed at $${TOOLCHAIN} in $$(( $$(date +%s) - start )) s"
+      PLUGIN_DEPOT_PATH="$${JULIA_DEPOT_PATH}"
+      unset JULIA_DEPOT_PATH
+      echo "--- Inside the toolchain"
+      bash .jb/utilities/windows/toolchain.sh --root "$${TOOLCHAIN}" bash -c '
+        set -euo pipefail
+        echo "gcc: $$(command -v gcc) $$(gcc -dumpversion)"
+        echo "make: $$(command -v make)"
+        echo "MSYSTEM=$$MSYSTEM HOME=$$HOME TMP=$$TMP"
+        echo "COMSPEC=$$COMSPEC"
+        echo "BUILDKITE_JOB_ID=$$BUILDKITE_JOB_ID BUILDKITE_PIPELINE_SLUG=$$BUILDKITE_PIPELINE_SLUG"
+        echo "aws: $$(command -v aws || echo missing) $$(aws --version 2>&1 || true)"
+        echo "buildkite-agent: $$(command -v buildkite-agent)"
+        echo "uploaded from the toolchain environment" > toolchain-upload.txt
+        buildkite-agent artifact upload toolchain-upload.txt
+        exit 3
+      ' || status=$$?
+      echo "toolchain.sh exit status: $${status:-0} (expected 3)"
+      [[ "$${status:-0}" == 3 ]]
+      echo "--- The tree is unmodified"
+      JULIA_DEPOT_PATH="$${PLUGIN_DEPOT_PATH}" julia --startup-file=no -e 'using Pkg.Artifacts; v = verify_artifact(Base.SHA1("c05b25a4e8ce4cdfca1960f1c226368c7913dc82")); println("verify_artifact: ", v); v || exit(1)'
+    timeout_in_minutes: 20
+    agents:
+      queue: "default"
+      os: "windows"
+      arch: "x86_64"
+
+  - label: ":windows: cancel inside the toolchain"
+    key: "cancel"
+    depends_on: "warm"
+    allow_dependency_failure: true
+    plugins:
+      - JuliaCI/julia#v1:
+          persist_depot_dirs: packages,artifacts,compiled
+          update_registry: false
+          version: '1.10'
+    commands: |
+      set -euo pipefail
+      git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git .jb
+      git -C .jb checkout -q "$${JULIA_BUILDKITE_COMMIT}"
+      TOOLCHAIN="$$(julia --startup-file=no .jb/utilities/windows/install_toolchain.jl \
+                      "package_windows.x86_64.v8.10" "c05b25a4e8ce4cdfca1960f1c226368c7913dc82")"
+      unset JULIA_DEPOT_PATH
+      bash .jb/utilities/windows/toolchain.sh --root "$${TOOLCHAIN}" bash -c 'echo "CANCEL-ME: sleeping in the toolchain, pid $$$$"; sleep 900; echo "not cancelled"'
+    timeout_in_minutes: 20
+    agents:
+      queue: "default"
+      os: "windows"
+      arch: "x86_64"

@@ -1,10 +1,10 @@
 # What Microsoft Update offers this guest right now (search only, nothing installed).
 # The image disables Windows Update; this disposable guest re-enables the services.
 $ErrorActionPreference = 'Stop'
-foreach ($svc in 'bits', 'wuauserv') {
-    Set-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Services\$svc" -Name Start -Value 3
-    Start-Service $svc
-}
+& sc.exe config wuauserv start= demand
+& sc.exe start wuauserv
+Start-Sleep -Seconds 5
+Get-Service wuauserv, bits | Format-Table -AutoSize Name, Status, StartType | Out-String
 $session = New-Object -ComObject Microsoft.Update.Session
 $searcher = $session.CreateUpdateSearcher()
 $searcher.ServerSelection = 3   # ssOthers: the service below, not the WSUS policy

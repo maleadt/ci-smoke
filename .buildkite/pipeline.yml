@@ -9,6 +9,7 @@ steps:
   key: checks
   commands: |
     set -euo pipefail
+    powershell.exe -NoProfile -Command "Get-Content C:\Windows\Temp\win-updates.log"
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/image-checks.ps1 write
     echo "--- sba guest-side tests"
     git clone -q --depth 1 -b "$${SBA_BRANCH}" https://github.com/JuliaCI/sandboxed-buildkite-agent.git sba

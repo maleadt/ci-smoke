@@ -104,7 +104,7 @@ steps:
       root="$$(awk '$$5 == "/"' /proc/self/mountinfo)"
       echo "root mount: $${root}"
       [[ "$${root}" == *lowerdir=/artifact-store/artifacts/$${ROOTFS_HASH}* ]]
-      gcc --version | head -1
+      gdb --version | head -1
       echo "--- write into the rootfs overlay"
       touch /var/tmp/smoke-overlay && ls -la /var/tmp/smoke-overlay
     agents:

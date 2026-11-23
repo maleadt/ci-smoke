@@ -1,21 +1,15 @@
-# Image checks only (see nodocker-windows-smoke)
+# Windows Update scan only
 ---
 env:
   JULIA_BUILDKITE_COMMIT: e973bae5430d49eda0c97cf3f86eee576c2c5739
   JULIA_COMMIT: b2052f278a83861f09bd4c05e683132adbfd201a
   SBA_BRANCH: tb/remove-docker-windows
 steps:
-- label: ":windows: image checks"
+- label: ":windows: Windows Update scan"
   key: checks
-  commands: |
-    set -euo pipefail
-    powershell.exe -NoProfile -Command "Get-Content C:\Windows\Temp\win-updates.log"
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/image-checks.ps1 write
-    echo "--- sba guest-side tests"
-    git clone -q --depth 1 -b "$${SBA_BRANCH}" https://github.com/JuliaCI/sandboxed-buildkite-agent.git sba
-    git -C sba log -1 --oneline
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File sba/platforms/tests/test_windows_cache.ps1
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File sba/platforms/tests/test_windows_network.ps1
+  commands: 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/wu-scan.ps1
+
+'
   timeout_in_minutes: 20
   agents:
     queue: default

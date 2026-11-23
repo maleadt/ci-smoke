@@ -1,16 +1,35 @@
-# Windows build step of julia-buildkite#816 (tb/rootfs-scheme), run by a real agent on a
-# KVM Windows worker: the toolchain is a rootfs-images tree installed into the julia
-# plugin's depot instead of the package-windows Docker image. The three jobs share one cache
-# pool (one slot), so the second and third find the toolchain installed already.
+# Windows worker images without Docker (sandboxed-buildkite-agent tb/remove-docker-windows),
+# run by a real agent on a KVM Windows worker: image checks, then julia-buildkite main's
+# build_windows.yml step (toolchain tree installed into the julia plugin's depot), a warm job
+# and a cancel. One slot, so all jobs share one cache pool and each boots a fresh OS overlay.
 #
 # The build stops at the S3 staging upload: there is no staging role for ci-smoke.
 env:
-  JULIA_BUILDKITE_COMMIT: "2ba82490aad21d61b8cdb450640e0543cac9216b"
-  JULIA_COMMIT: "562474cbd28258fdf04731b001ece9f4cd2f6171"
+  JULIA_BUILDKITE_COMMIT: "e973bae5430d49eda0c97cf3f86eee576c2c5739"
+  JULIA_COMMIT: "b2052f278a83861f09bd4c05e683132adbfd201a"
+  SBA_BRANCH: "tb/remove-docker-windows"
 
 steps:
+  - label: ":windows: image checks"
+    key: "checks"
+    commands: |
+      set -euo pipefail
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/image-checks.ps1 write
+      echo "--- sba guest-side tests"
+      git clone -q --depth 1 -b "$${SBA_BRANCH}" https://github.com/JuliaCI/sandboxed-buildkite-agent.git sba
+      git -C sba log -1 --oneline
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File sba/platforms/tests/test_windows_cache.ps1
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File sba/platforms/tests/test_windows_network.ps1
+    timeout_in_minutes: 20
+    agents:
+      queue: "default"
+      os: "windows"
+      arch: "x86_64"
+
   - label: ":windows: build x86_64-w64-mingw32 (cold toolchain)"
     key: "build"
+    depends_on: "checks"
+    allow_dependency_failure: true
     plugins:
       - JuliaCI/julia#v1:
           persist_depot_dirs: packages,artifacts,compiled
@@ -27,17 +46,17 @@ steps:
       # From here on: the commands of julia-buildkite's build_windows.yml
       echo "--- Install the toolchain"
       TOOLCHAIN="$$(julia --startup-file=no .buildkite/utilities/windows/install_toolchain.jl \
-                      "package_windows.x86_64.v8.10" "c05b25a4e8ce4cdfca1960f1c226368c7913dc82")"
+                      "package_windows.x86_64.v8.14" "c1ee19169e6c3ddc16a28d609a00245aa5241a78")"
       unset JULIA_DEPOT_PATH
       bash .buildkite/utilities/windows/toolchain.sh --root "$${TOOLCHAIN}" .buildkite/utilities/build_julia.sh
-    timeout_in_minutes: 120
+    timeout_in_minutes: 150
     agents:
       queue: "default"
       os: "windows"
       arch: "x86_64"
     env:
       TRIPLET: "x86_64-w64-mingw32"
-      # build_windows.arches, plus what julia-pr builds get (no HTML manual)
+      # build_windows.arches of julia-buildkite main, plus what julia-pr builds get (no HTML manual)
       MAKE_FLAGS: "VERBOSE=1,JL_CFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JL_CXXFLAGS=-Werror -Wno-error=array-bounds -Wno-error=array-bounds= -Wno-error=infinite-recursion,JULIA_INSTALL_DOCS=0"
       JULIA_CI_BUILD_MODE: ""
 
@@ -54,10 +73,11 @@ steps:
       set -euo pipefail
       git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git .jb
       git -C .jb checkout -q "$${JULIA_BUILDKITE_COMMIT}"
+      powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/image-checks.ps1 read
       echo "--- Install the toolchain (expect no download)"
       start=$$(date +%s)
       TOOLCHAIN="$$(julia --startup-file=no .jb/utilities/windows/install_toolchain.jl \
-                      "package_windows.x86_64.v8.10" "c05b25a4e8ce4cdfca1960f1c226368c7913dc82")"
+                      "package_windows.x86_64.v8.14" "c1ee19169e6c3ddc16a28d609a00245aa5241a78")"
       echo "installed at $${TOOLCHAIN} in $$(( $$(date +%s) - start )) s"
       PLUGIN_DEPOT_PATH="$${JULIA_DEPOT_PATH}"
       unset JULIA_DEPOT_PATH
@@ -78,7 +98,7 @@ steps:
       echo "toolchain.sh exit status: $${status:-0} (expected 3)"
       [[ "$${status:-0}" == 3 ]]
       echo "--- The tree is unmodified"
-      JULIA_DEPOT_PATH="$${PLUGIN_DEPOT_PATH}" julia --startup-file=no -e 'using Pkg.Artifacts; v = verify_artifact(Base.SHA1("c05b25a4e8ce4cdfca1960f1c226368c7913dc82")); println("verify_artifact: ", v); v || exit(1)'
+      JULIA_DEPOT_PATH="$${PLUGIN_DEPOT_PATH}" julia --startup-file=no -e 'using Pkg.Artifacts; v = verify_artifact(Base.SHA1("c1ee19169e6c3ddc16a28d609a00245aa5241a78")); println("verify_artifact: ", v); v || exit(1)'
     timeout_in_minutes: 20
     agents:
       queue: "default"
@@ -99,7 +119,7 @@ steps:
       git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git .jb
       git -C .jb checkout -q "$${JULIA_BUILDKITE_COMMIT}"
       TOOLCHAIN="$$(julia --startup-file=no .jb/utilities/windows/install_toolchain.jl \
-                      "package_windows.x86_64.v8.10" "c05b25a4e8ce4cdfca1960f1c226368c7913dc82")"
+                      "package_windows.x86_64.v8.14" "c1ee19169e6c3ddc16a28d609a00245aa5241a78")"
       unset JULIA_DEPOT_PATH
       bash .jb/utilities/windows/toolchain.sh --root "$${TOOLCHAIN}" bash -c 'echo "CANCEL-ME: sleeping in the toolchain, pid $$$$"; sleep 900; echo "not cancelled"'
     timeout_in_minutes: 20

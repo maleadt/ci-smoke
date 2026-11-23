@@ -5,7 +5,9 @@
 # job and a cancel. One slot, so all jobs share one cache pool and each boots a fresh OS
 # overlay.
 #
-# The builds stop at the S3 staging upload: there is no staging role for ci-smoke.
+# There is no S3 staging role for ci-smoke, so the build jobs replace julia-buildkite's
+# aws_oidc.sh and upload_to_s3 with stubs that log and skip; everything else, including
+# the bounds-checked companion archive the test job downloads, runs unchanged.
 env:
   JULIA_BUILDKITE_COMMIT: "e973bae5430d49eda0c97cf3f86eee576c2c5739"
   JULIA_COMMIT: "b2052f278a83861f09bd4c05e683132adbfd201a"
@@ -45,6 +47,8 @@ steps:
       git clone -q --filter=blob:none --no-checkout https://github.com/JuliaCI/julia-buildkite.git julia-src/.buildkite
       git -C julia-src/.buildkite checkout -q "$${JULIA_BUILDKITE_COMMIT}"
       cd julia-src
+      printf '# smoke stub: no staging role for ci-smoke\n' > .buildkite/utilities/aws_oidc.sh
+      printf 'upload_to_s3() { echo "smoke stub: not staging $$1 to s3://$$2"; }\n' > .buildkite/utilities/upload_to_s3.sh
       # From here on: the commands of julia-buildkite's build_windows.yml
       echo "--- Install the toolchain"
       TOOLCHAIN="$$(julia --startup-file=no .buildkite/utilities/windows/install_toolchain.jl \
@@ -153,6 +157,8 @@ steps:
       git -C julia-src/.buildkite fetch -q origin pull/818/head
       git -C julia-src/.buildkite checkout -q a5772055809ccdd0a3fc4fdf56fc68f49404aad8
       cd julia-src
+      printf '# smoke stub: no staging role for ci-smoke\n' > .buildkite/utilities/aws_oidc.sh
+      printf 'upload_to_s3() { echo "smoke stub: not staging $$1 to s3://$$2"; }\n' > .buildkite/utilities/upload_to_s3.sh
       echo "--- Install the toolchain"
       TOOLCHAIN="$$(julia --startup-file=no .buildkite/utilities/windows/install_toolchain.jl \
                       "package_windows.i686.v8.5" "178712d45afd0bf134c5419f030ba15f33faa8da")"

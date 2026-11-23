@@ -6,14 +6,14 @@ steps:
     parallelism: 2
     command: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/nic-check.ps1
     timeout_in_minutes: 20
-    agents: {queue: "default", os: "windows", arch: "x86_64", sched_cpus: "6", sched_cpus_limit: "6"}
+    agents: {queue: "default", os: "windows", arch: "x86_64", sched_cpus: "6", sched_cpus_limit: "6", sched_mem_gib: "12"}
   - label: ":windows: NIC at 8 vCPUs (%n)"
     parallelism: 2
     command: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/nic-check.ps1
     timeout_in_minutes: 20
-    agents: {queue: "default", os: "windows", arch: "x86_64", sched_cpus: "8", sched_cpus_limit: "8"}
+    agents: {queue: "default", os: "windows", arch: "x86_64", sched_cpus: "8", sched_cpus_limit: "8", sched_mem_gib: "12"}
   - label: ":windows: NIC at 12 vCPUs (%n)"
     parallelism: 2
     command: powershell.exe -NoProfile -ExecutionPolicy Bypass -File .buildkite/nic-check.ps1
     timeout_in_minutes: 20
-    agents: {queue: "default", os: "windows", arch: "x86_64", sched_cpus: "12", sched_cpus_limit: "12"}
+    agents: {queue: "default", os: "windows", arch: "x86_64", sched_cpus: "12", sched_cpus_limit: "12", sched_mem_gib: "12"}

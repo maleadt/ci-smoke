@@ -1,9 +1,13 @@
-# Server 2025 worker image: InteractiveUtils' empty-clipboard test (fails in ci-smoke 295).
+# Server 2025 worker image: the IsClipboardFormatAvailable fix for InteractiveUtils' clipboard()
+# (the empty-clipboard test fails in ci-smoke 295/296).
 steps:
-  - label: ":windows: empty clipboard"
+  - label: ":windows: clipboard fix (julia {{matrix}})"
+    matrix:
+      - "nightly"
+      - "1.10"
     plugins:
       - JuliaCI/julia#v1:
-          version: '1.10'
+          version: "{{matrix}}"
           update_registry: false
     commands: |
       julia --startup-file=no .buildkite/clipboard.jl
